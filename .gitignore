@@ -1,0 +1,17 @@
+Debug/*
+Release/*
+xml/*
+xmls/*
+calibration/*
+Debug/*
+*.png
+main.exe
+main.i
+main.o
+makefile
+stereo_calib/*
+stereo_test/*
+test/*
+*.png
+*.xml
+*.yml
