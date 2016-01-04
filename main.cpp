@@ -5,6 +5,8 @@
 #include <sstream>
 #include <stdio.h>
 
+#include "ReadAndApplyCalib.cpp"
+
 using namespace cv;
 using namespace std;
 void save_stereo_frame(cv::Mat stereo_frame, const char *path_and_prefix, int frame_num){
@@ -70,9 +72,19 @@ void read_pair_then_split_and_save(const char *readpath, const char *savepath){
 	}
 }
 
-void split_left_right_frame_stereo_frame(cv::Mat stereo_frame, cv::Mat &left, cv::Mat &right, int w, int h){
+inline void split_left_right_frame_stereo_frame(cv::Mat stereo_frame, cv::Mat &left, cv::Mat &right, int w, int h){
 	left = stereo_frame(Rect(0, 0, w, h));
 	right = stereo_frame(Rect(w, 0, w, h));
+}
+
+inline void copy_left_right_into_view(cv::Mat left, cv::Mat right, cv::Mat &view){
+	for (int i=0;i<view.cols;i++) {
+		if (i < left.cols) {
+				view.col(i) = left.col(i);
+		} else {
+				view.col(i) = right.col(i - left.cols);
+		}
+	}
 }
 
 int main( int argc, char** argv )
@@ -86,12 +98,31 @@ int main( int argc, char** argv )
 
 	int w_for_each_img = 640;
 	int h_for_each_img = 400;
+	Size imageSize(w_for_each_img, h_for_each_img);
 	int channel = 3;
 	int cal_img_cout = 20;
 	bool cal_end = false;
 	int width = 640;
 	int height = 400;
 	Size borderSize(7, 5);
+
+	//single calibration
+	Mat l_cameraMatrix, l_distCoeffs, r_cameraMatrix, r_distCoeffs;
+	readCameraParams(l_cameraMatrix, l_distCoeffs, r_cameraMatrix, r_distCoeffs);
+	Mat l_map1, l_map2, r_map1, r_map2;
+    initUndistortRectifyMap(l_cameraMatrix, l_distCoeffs, Mat(),
+        getOptimalNewCameraMatrix(l_cameraMatrix, l_distCoeffs, imageSize, 1, imageSize, 0),
+        imageSize, CV_16SC2, l_map1, l_map2);
+	initUndistortRectifyMap(r_cameraMatrix, r_distCoeffs, Mat(),
+        getOptimalNewCameraMatrix(r_cameraMatrix, r_distCoeffs, imageSize, 1, imageSize, 0),
+        imageSize, CV_16SC2, r_map1, r_map2);
+	//stereo calibration
+	Mat rmap[2][2];
+	Mat cameraMatrix[2], distCoeffs[2];
+	Mat R, T, R1, R2, P1, P2, Q;
+	readCameraIntrAndExtr(cameraMatrix, distCoeffs, R, T, R1, R2, P1, P2, Q);
+	initUndistortRectifyMap(cameraMatrix[0], distCoeffs[0], R1, P1, imageSize, CV_16SC2, rmap[0][0], rmap[0][1]);
+    initUndistortRectifyMap(cameraMatrix[1], distCoeffs[1], R2, P2, imageSize, CV_16SC2, rmap[1][0], rmap[1][1]);
 
 	cv::Mat left, right;
 	Mat edges;
@@ -104,53 +135,27 @@ int main( int argc, char** argv )
 		if(frame.rows <= 0 || frame.cols <= 0)continue;
 
 		split_left_right_frame_stereo_frame(frame, left, right, width, height);
-		vector<Point2f> l_pointBuf;
-		vector<Point2f> r_pointBuf;
 
-		bool l_found = findChessboardCorners( left , borderSize, l_pointBuf,
-												CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FAST_CHECK | CV_CALIB_CB_NORMALIZE_IMAGE);
-		bool r_found = findChessboardCorners( right, borderSize, r_pointBuf,
-												CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FAST_CHECK | CV_CALIB_CB_NORMALIZE_IMAGE);
-		if (l_found && r_found)                // If both found
-		{
-			// improve the found corners' coordinate accuracy for chessboard
-			Mat l_viewGray;
-			Mat r_viewGray;
+		//single calibration
+		Mat l_t = left.clone();
+		remap(l_t, left, l_map1, l_map2, INTER_LINEAR);
+		Mat r_t = right.clone();
+		remap(r_t, right, r_map1, r_map2, INTER_LINEAR);
+		//stereo calibration
+		l_t = left.clone();
+		r_t = right.clone();
+		remap(l_t, left, rmap[0][0], rmap[0][1], CV_INTER_LINEAR);
+		remap(r_t, right, rmap[1][0], rmap[1][1], CV_INTER_LINEAR);
 
-			cvtColor(left , l_viewGray, COLOR_BGR2GRAY);
-			cvtColor(right, r_viewGray, COLOR_BGR2GRAY);
-
-			cornerSubPix( l_viewGray, l_pointBuf, Size(11,11),
-				Size(-1,-1), TermCriteria( CV_TERMCRIT_EPS+CV_TERMCRIT_ITER, 30, 0.1 ));
-			cornerSubPix( r_viewGray, r_pointBuf, Size(11,11),
-				Size(-1,-1), TermCriteria( CV_TERMCRIT_EPS+CV_TERMCRIT_ITER, 30, 0.1 ));
-
-			//draw
-			vector<Point2f> shift_r_pointBuf;
-			for ( Point2f &i : r_pointBuf ) {
-				shift_r_pointBuf.push_back(Point2f(i.x+width, i.y));
-			}
-			drawChessboardCorners( frame, borderSize, Mat(l_pointBuf), true );
-			drawChessboardCorners( frame, borderSize, Mat(shift_r_pointBuf), true );
-		}
+		copy_left_right_into_view(left, right, frame);
+		
+		for( int j = 0; j < frame.rows; j += 16 )
+                line(frame, Point(0, j), Point(frame.cols, j), Scalar(0, 255, 0), 1, 8);
 
         imshow("edges", frame);
-		switch(waitKey(30))
-		{
-			case 'e':
-				cal_end = true;
-				break;
-			case 's':
-				//save this frame to be ready for calibration
-				save_left_right_of_comb_img(frame, "test/", cal_img_cout + 1, h_for_each_img, w_for_each_img, channel);
-				//save_stereo_frame(frame, "stereo_calib/", cal_img_cout + 1);
-				printf("Save image %2dth image\n", cal_img_cout+1);
-				cal_img_cout++;
-				break;
-		}
-    }
+		cvWaitKey(30);
+	}
     // the camera will be deinitialized automatically in VideoCapture destructor
-    return 0;
 
    return 0;
 }
