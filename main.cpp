@@ -87,14 +87,14 @@ int main( int argc, char** argv )
 	int w_for_each_img = 640;
 	int h_for_each_img = 400;
 	int channel = 3;
-	int cal_img_cout = 20;
+	int cal_img_cout = 0;
 	bool cal_end = false;
 	int width = 640;
 	int height = 400;
-	Size borderSize(7, 5);
+	Size borderSize(13, 9);
 
 	cv::Mat left, right;
-	Mat edges;
+	Mat clone_frame;
     namedWindow("edges",1);
     while(!cal_end)
     {
@@ -113,6 +113,8 @@ int main( int argc, char** argv )
 												CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FAST_CHECK | CV_CALIB_CB_NORMALIZE_IMAGE);
 		if (l_found && r_found)                // If both found
 		{
+			clone_frame = frame.clone();
+
 			// improve the found corners' coordinate accuracy for chessboard
 			Mat l_viewGray;
 			Mat r_viewGray;
@@ -142,7 +144,7 @@ int main( int argc, char** argv )
 				break;
 			case 's':
 				//save this frame to be ready for calibration
-				save_left_right_of_comb_img(frame, "test/", cal_img_cout + 1, h_for_each_img, w_for_each_img, channel);
+				save_left_right_of_comb_img(clone_frame, "test/", cal_img_cout + 1, h_for_each_img, w_for_each_img, channel);
 				//save_stereo_frame(frame, "stereo_calib/", cal_img_cout + 1);
 				printf("Save image %2dth image\n", cal_img_cout+1);
 				cal_img_cout++;
