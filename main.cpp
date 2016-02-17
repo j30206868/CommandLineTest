@@ -125,8 +125,8 @@ int main( int argc, char** argv )
     initUndistortRectifyMap(cameraMatrix[1], distCoeffs[1], R2, P2, imageSize, CV_16SC2, rmap[1][0], rmap[1][1]);
 
 	cv::Mat left, right;
-	Mat edges;
-    namedWindow("edges",1);
+	Mat l_edges, r_edges, s_edges;
+    namedWindow("Stereo",1);
     while(!cal_end)
     {
         Mat frame;
@@ -147,12 +147,24 @@ int main( int argc, char** argv )
 		remap(l_t, left, rmap[0][0], rmap[0][1], CV_INTER_LINEAR);
 		remap(r_t, right, rmap[1][0], rmap[1][1], CV_INTER_LINEAR);
 
+		/*cvtColor(left, l_edges, CV_BGR2GRAY);
+        GaussianBlur(l_edges, l_edges, Size(7,7), 1.5, 1.5);
+		Canny(l_edges, l_edges, 0, 30, 3);
+
+		cvtColor(right, r_edges, CV_BGR2GRAY);
+        GaussianBlur(r_edges, r_edges, Size(7,7), 1.5, 1.5);
+		Canny(r_edges, r_edges, 0, 30, 3);
+
+		imshow("lefti", l_edges);
+		cvWaitKey(30);
+		imshow("righti", r_edges);
+		cvWaitKey(30);*/
 		copy_left_right_into_view(left, right, frame);
 		
 		for( int j = 0; j < frame.rows; j += 16 )
                 line(frame, Point(0, j), Point(frame.cols, j), Scalar(0, 255, 0), 1, 8);
 
-        imshow("edges", frame);
+        imshow("Stereo", frame);
 		cvWaitKey(30);
 	}
     // the camera will be deinitialized automatically in VideoCapture destructor
